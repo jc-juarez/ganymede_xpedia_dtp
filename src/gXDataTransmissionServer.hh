@@ -21,7 +21,15 @@
 namespace gX
 {
 
-using DtpEndpointType = std::function<StatusCode(std::string)>;
+//
+// Required signature for all server endpoints.
+//
+using EndpointType = std::function<StatusCode(std::string)>;
+
+//
+// DTP packet type alias.
+//
+using PacketTag = uint32_t;
 
 //
 // Configurations for the DTP server.
@@ -66,10 +74,10 @@ struct DataTransmissionServerConfiguration
     bool m_CleanTermination;
 
     //
-    // DTP tag to function map. Maps a tag to the appropriate function binding to be executed.
+    // DTP packet tag to function map. Maps a tag to the appropriate function binding to be executed.
     // Establishes the signature needed to be used by all functions using the DTP protocol <StatusCode F(DataTransmissionPacket)>.
     //
-    std::unordered_map<uint32_t, DtpEndpointType> m_TagResolverTable;
+    std::unordered_map<PacketTag, EndpointType> m_PacketTagResolverTable;
 
     //
     // Default port.
@@ -156,7 +164,7 @@ public:
     //
     // Default DTP packet tag for the default endpoint.
     //
-    static constexpr uint32_t c_DefaultEndpointPacketTag = 0u;
+    static constexpr PacketTag c_DefaultEndpointPacketTag = 0u;
 
 private:
 
@@ -173,9 +181,19 @@ private:
     static
     void
     DispatcherProxy(
-        const DtpEndpointType p_Endpoint,
+        DataTransmissionServer* p_DataTransmissionServer,
+        const EndpointType p_Endpoint,
         const FileDescriptor p_Connection,
         std::string p_Packet);
+
+    //
+    // Sends a response back to the client and closes the established connection.
+    //
+    static
+    void
+    SendResponseAndCloseConnection(
+        const StatusCode p_Status,
+        const FileDescriptor p_Connection);
 
     //
     // Handle for the DispatchRequests method execution.
@@ -236,6 +254,17 @@ private:
     // Thread pool for handling concurrent requests.
     //
     ThreadPool m_ThreadPool;
+
+    //
+    // DTP packet tag to function map. Maps a tag to the appropriate function binding to be executed.
+    // Establishes the signature needed to be used by all functions using the DTP protocol <StatusCode F(DataTransmissionPacket)>.
+    //
+    std::unordered_map<PacketTag, EndpointType> m_PacketTagResolverTable;
+
+    //
+    // Number of requests currently in execution.
+    //
+    std::atomic<uint64_t> m_NumberRequestsInExecution;
 
 };
 

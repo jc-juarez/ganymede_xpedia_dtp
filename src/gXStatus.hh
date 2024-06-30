@@ -128,6 +128,11 @@ public:
     //
     STATUS_CODE_DEFINITION(ServiceIsStopped, 0x8'0000009);
 
+    //
+    // Packet tag is unknown.
+    //
+    STATUS_CODE_DEFINITION(UnknownPacketTag, 0x8'0000010);
+
 };
 
 } // namespace gX.

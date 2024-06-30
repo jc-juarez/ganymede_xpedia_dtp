@@ -68,12 +68,6 @@ ThreadPool::GetNumberThreads() const
     return m_NumberThreads;
 }
 
-uint64_t
-ThreadPool::GetNumberTasksInExecution() const
-{
-    return m_NumberTasksInExecution;
-}
-
 void
 ThreadPool::TaskHandler()
 {
@@ -107,11 +101,6 @@ ThreadPool::TaskHandler()
         }
 
         task();
-
-        //
-        // Decrement the counter only after the task execution is completed.
-        //
-        --m_NumberTasksInExecution;
     }      
 }
 

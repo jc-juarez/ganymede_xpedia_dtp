@@ -55,12 +55,6 @@ public:
     GetNumberThreads() const;
 
     //
-    // Returns the number of tasks currently in execution.
-    //
-    uint64_t
-    GetNumberTasksInExecution() const;
-
-    //
     //  Enqueues a task into the queue.
     //
     template<typename Function, typename... Args>
@@ -98,9 +92,7 @@ public:
 
         //
         // Notify the task handler of a new task to be executed.
-        // Also increment the number of tasks in execution before starting the task.
         //
-        ++m_NumberTasksInExecution;
         m_Condition.notify_one();
         return std::make_optional<std::future<ReturnType>>(std::move(packagedTaskResult));
     }
@@ -142,11 +134,6 @@ private:
     // Flag for stopping worker threads.
     //
     bool m_Stop;
-
-    //
-    // Number of tasks currently in execution.
-    //
-    std::atomic<uint64_t> m_NumberTasksInExecution;
     
 };
 

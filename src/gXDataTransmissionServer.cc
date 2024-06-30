@@ -8,10 +8,10 @@
 #include <thread>
 #include <cstring>
 #include <unistd.h>
+#include <iostream>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include "gXDataTransmissionServer.hh"
-#include <iostream> // delete;
 
 namespace gX
 {
@@ -25,9 +25,9 @@ DataTransmissionServerConfiguration::DataTransmissionServerConfiguration()
       m_CleanTermination(c_DefaultCleanTermination)
 {
     //
-    // Default function for the default DTP packet tag. Possible to override it.
+    // Default function for the default DTP packet tag. Possible to override it (and recommended for production scenarios).
     //
-    m_TagResolverTable.emplace(DataTransmissionServer::c_DefaultEndpointPacketTag, &DataTransmissionServer::DefaultEndpoint);
+    m_PacketTagResolverTable.emplace(DataTransmissionServer::c_DefaultEndpointPacketTag, &DataTransmissionServer::DefaultEndpoint);
 }
 
 DataTransmissionServer::DataTransmissionServer(
@@ -84,10 +84,11 @@ DataTransmissionServer::Init(
     }
 
     //
-    // Set the execution models.
+    // Set the execution models and the packet tag resolver table.
     //
     m_BlockingExecution = p_Configuration->m_BlockingExecution;
     m_CleanTermination = p_Configuration->m_CleanTermination;
+    m_PacketTagResolverTable = std::move(p_Configuration->m_PacketTagResolverTable);
 
     //
     // Initialize the thread pool.
@@ -212,13 +213,7 @@ StatusCode
 DataTransmissionServer::DefaultEndpoint(
     std::string p_Packet)
 {
-    // This should be a proxy that should execute the speicified function (endpoint),
-    // and once it returns it closes the connection.
-
-
-    std::cout << "Message from client: " << p_Packet.c_str() << std::endl;
-    std::thread::id this_id = std::this_thread::get_id();
-    std::cout << "Thread function running on thread ID: " << this_id << std::endl;
+    std::cout << p_Packet.c_str() << std::endl;
 
     return Status::Success;
 }
@@ -262,15 +257,45 @@ DataTransmissionServer::DispatchRequests()
             continue;
         }
         
+        //
+        // Deserialize message.
+        //
         std::string packet(reinterpret_cast<char*>(m_ReceiveBuffer.get()), numberBytesRead);
+        const PacketTag packetTag = c_DefaultEndpointPacketTag;
 
-        DtpEndpointType boundFunction = DtpEndpointType(std::bind(&DataTransmissionServer::DefaultEndpoint, std::placeholders::_1));
+        //
+        // Resolve function to execute based on the lookup table.
+        //
+        if (m_PacketTagResolverTable.find(packetTag) == m_PacketTagResolverTable.end())
+        {
+            //
+            // Unknown packet tag.
+            // Do not enqueue the request and send the response back immediately.
+            //
+            SendResponseAndCloseConnection(Status::UnknownPacketTag, connection);
 
-        m_ThreadPool.EnqueueTask(
+            continue;
+        }
+        
+        const EndpointType boundFunction = m_PacketTagResolverTable.at(packetTag);
+
+        //
+        // Enqueue task for async execution and increase the number of requests in execution.
+        //
+        auto enqueueResult = m_ThreadPool.EnqueueTask(
             &DataTransmissionServer::DispatcherProxy,
+            this,
             boundFunction,
             connection,
             packet);
+
+        if (enqueueResult != std::nullopt)
+        {
+            //
+            // It is better to increment the counter here as it guarantees change decoupled from the new thread execution.
+            //
+            ++m_NumberRequestsInExecution;
+        }
     }
 
     if (m_CleanTermination)
@@ -279,7 +304,7 @@ DataTransmissionServer::DispatchRequests()
         // Clean termination was specified; wait for all tasks to finish.
         // At this point it is guaranteed that no more tasks will be enqueued.
         //
-        while (m_ThreadPool.GetNumberTasksInExecution() != 0)
+        while (m_NumberRequestsInExecution != 0)
         {}
     }
 
@@ -293,20 +318,34 @@ DataTransmissionServer::DispatchRequests()
 
 void
 DataTransmissionServer::DispatcherProxy(
-    const DtpEndpointType p_Endpoint,
+    DataTransmissionServer* p_DataTransmissionServer,
+    const EndpointType p_Endpoint,
     const FileDescriptor p_Connection,
     std::string p_Packet)
 {
     //
-    // Execute endpoint in an async context and standardize its result.
+    // Execute endpoint in an async context.
     //
-    StatusCode status = htonl(p_Endpoint(p_Packet));
+    SendResponseAndCloseConnection(p_Endpoint(p_Packet), p_Connection);
+
+    //
+    // Decrement the counter once the response has been sent back to the client.
+    //
+    --(p_DataTransmissionServer->m_NumberRequestsInExecution);
+}
+
+void
+DataTransmissionServer::SendResponseAndCloseConnection(
+    const StatusCode p_Status,
+    const FileDescriptor p_Connection)
+{
+    StatusCode standardizedStatusCode = htonl(p_Status);
 
     //
     // Send the response back to the client and close the connection.
     // This expects that the server socket handle is still open and active.
     //
-    send(p_Connection, &status, sizeof(status), 0);
+    send(p_Connection, &standardizedStatusCode, sizeof(standardizedStatusCode), 0);
     close(p_Connection);
 }
 

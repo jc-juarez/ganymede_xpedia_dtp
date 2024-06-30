@@ -14,7 +14,7 @@ def tcp_client():
         print(f"Connected to server {SERVER_ADDRESS} on port {SERVER_PORT}")
         
         # Send data to the server
-        message = "Hello, Server :DDDD!"
+        message = "Hello, New Server :DDDD!"
         client_socket.sendall(message.encode('utf-8'))
         print(f"Sent: {message}")
         
