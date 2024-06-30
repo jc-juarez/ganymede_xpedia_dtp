@@ -98,7 +98,9 @@ public:
 
         //
         // Notify the task handler of a new task to be executed.
+        // Also increment the number of tasks in execution before starting the task.
         //
+        ++m_NumberTasksInExecution;
         m_Condition.notify_one();
         return std::make_optional<std::future<ReturnType>>(std::move(packagedTaskResult));
     }

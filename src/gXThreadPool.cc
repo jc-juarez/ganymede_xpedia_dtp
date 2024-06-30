@@ -87,8 +87,7 @@ ThreadPool::TaskHandler()
             m_Condition.wait(lock,
                 [this]
                 {
-                    return this->m_Stop ||
-                        !this->m_Tasks.empty();
+                    return this->m_Stop || !this->m_Tasks.empty();
                 });
 
             //
@@ -107,8 +106,11 @@ ThreadPool::TaskHandler()
             m_Tasks.pop();
         }
 
-        ++m_NumberTasksInExecution;
         task();
+
+        //
+        // Decrement the counter only after the task execution is completed.
+        //
         --m_NumberTasksInExecution;
     }      
 }

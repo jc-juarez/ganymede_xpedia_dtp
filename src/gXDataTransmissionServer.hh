@@ -12,12 +12,16 @@
 #include <memory>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include "gXStatus.hh"
 #include <netinet/in.h>
+#include <unordered_map>
 #include "gXThreadPool.hh"
 
 namespace gX
 {
+
+using DtpEndpointType = std::function<StatusCode(std::string)>;
 
 //
 // Configurations for the DTP server.
@@ -60,6 +64,12 @@ struct DataTransmissionServerConfiguration
     // Ensures that the internal thread pool waits for all tasks to finish upon object destruction.
     //
     bool m_CleanTermination;
+
+    //
+    // DTP tag to function map. Maps a tag to the appropriate function binding to be executed.
+    // Establishes the signature needed to be used by all functions using the DTP protocol <StatusCode F(DataTransmissionPacket)>.
+    //
+    std::unordered_map<uint32_t, DtpEndpointType> m_TagResolverTable;
 
     //
     // Default port.
@@ -134,6 +144,20 @@ public:
     StatusCode
     Stop();
 
+    //
+    // Default server endpoint. Specifies the required signature for all endpoints.
+    // Only used for debugging purposes.
+    //
+    static
+    StatusCode
+    DefaultEndpoint(
+        std::string p_Packet);
+
+    //
+    // Default DTP packet tag for the default endpoint.
+    //
+    static constexpr uint32_t c_DefaultEndpointPacketTag = 0u;
+
 private:
 
     //
@@ -144,11 +168,12 @@ private:
     DispatchRequests();
 
     //
-    // Default server endpoint. Only used for debugging purposes.
+    // Dispatcher proxy. Executes the specified function and then closes the connection.
     //
     static
     void
-    DefaultEndpoint(
+    DispatcherProxy(
+        const std::function<StatusCode(std::string)> p_Endpoint,
         const FileDescriptor p_Connection,
         std::string p_Packet);
 
@@ -173,9 +198,9 @@ private:
     const std::string m_ServiceIdentifier;
 
     //
-    // Server internal file descriptor handle.
+    // Server internal socket handle.
     //
-    FileDescriptor m_ServerHandle;
+    FileDescriptor m_ServerSocketHandle;
 
     //
     // Holds the internal server socket address information.

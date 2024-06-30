@@ -23,7 +23,12 @@ DataTransmissionServerConfiguration::DataTransmissionServerConfiguration()
       m_MaxNumberAllowedConnections(c_DefaultMaxNumberAllowedConnections),
       m_BlockingExecution(c_DefaultBlockingExecution),
       m_CleanTermination(c_DefaultCleanTermination)
-{}
+{
+    //
+    // Default function for the default DTP packet tag. Possible to override it.
+    //
+    m_TagResolverTable.emplace(DataTransmissionServer::c_DefaultEndpointPacketTag, &DataTransmissionServer::DefaultEndpoint);
+}
 
 DataTransmissionServer::DataTransmissionServer(
     const std::string& p_ServiceIdentifier)
@@ -110,7 +115,7 @@ DataTransmissionServer::Init(
     //
     // Create socket handle for handling incoming requests.
     //
-    if ((m_ServerHandle = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+    if ((m_ServerSocketHandle = socket(AF_INET, SOCK_STREAM, 0)) == 0)
     {
         return Status::SocketCreationFailed;
     }
@@ -120,9 +125,9 @@ DataTransmissionServer::Init(
     //
     int32_t opt = 1;
 
-    if (setsockopt(m_ServerHandle, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+    if (setsockopt(m_ServerSocketHandle, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
     {
-        close(m_ServerHandle);
+        close(m_ServerSocketHandle);
         
         return Status::SocketConfigurationFailed;
     }
@@ -138,9 +143,9 @@ DataTransmissionServer::Init(
     //
     // Bind the socket handle to the socket address information.
     //
-    if (bind(m_ServerHandle, reinterpret_cast<const sockaddr*>(&m_Address), sizeof(m_Address)) < 0)
+    if (bind(m_ServerSocketHandle, reinterpret_cast<const sockaddr*>(&m_Address), sizeof(m_Address)) < 0)
     {
-        close(m_ServerHandle);
+        close(m_ServerSocketHandle);
 
         return Status::SocketBindFailed;
     }
@@ -148,9 +153,9 @@ DataTransmissionServer::Init(
     //
     // Start listening for connections on the specified port.
     //
-    if (listen(m_ServerHandle, p_Configuration->m_MaxNumberAllowedConnections) < 0)
+    if (listen(m_ServerSocketHandle, p_Configuration->m_MaxNumberAllowedConnections) < 0)
     {
-        close(m_ServerHandle);
+        close(m_ServerSocketHandle);
 
         return Status::SocketListenFailed;
     }
@@ -203,6 +208,21 @@ DataTransmissionServer::Stop()
     return Status::Success;
 }
 
+StatusCode
+DataTransmissionServer::DefaultEndpoint(
+    std::string p_Packet)
+{
+    // This should be a proxy that should execute the speicified function (endpoint),
+    // and once it returns it closes the connection.
+
+
+    std::cout << "Message from client: " << p_Packet.c_str() << std::endl;
+    std::thread::id this_id = std::this_thread::get_id();
+    std::cout << "Thread function running on thread ID: " << this_id << std::endl;
+
+    return Status::Success;
+}
+
 void
 DataTransmissionServer::DispatchRequests()
 {
@@ -221,7 +241,7 @@ DataTransmissionServer::DispatchRequests()
         //
         // Accept an incoming connection.
         //
-        if ((connection = accept(m_ServerHandle, (struct sockaddr *)&m_Address, (socklen_t *)&m_AddressLength)) < 0)
+        if ((connection = accept(m_ServerSocketHandle, (struct sockaddr *)&m_Address, (socklen_t *)&m_AddressLength)) < 0)
         {
             //
             // Invalid connection; continue.
@@ -243,44 +263,57 @@ DataTransmissionServer::DispatchRequests()
         }
         
         std::string str(reinterpret_cast<char*>(m_ReceiveBuffer.get()), numberBytesRead);
+
+        auto boundFunction = std::bind(&DataTransmissionServer::DefaultEndpoint, std::placeholders::_1);
+
+
+        std::function<StatusCode(std::string)> func = std::function<StatusCode(std::string)>(boundFunction);
+
+
+
+
         
-        m_ThreadPool.EnqueueTask(&gX::DataTransmissionServer::DefaultEndpoint, connection, str);
+        m_ThreadPool.EnqueueTask(
+            &DataTransmissionServer::DispatcherProxy,
+            func,
+            connection,
+            str);
     }
 
     if (m_CleanTermination)
     {
         //
         // Clean termination was specified; wait for all tasks to finish.
+        // At this point it is guaranteed that no more tasks will be enqueued.
         //
-        while (m_ThreadPool.GetNumberTasksInExecution() > 0)
+        while (m_ThreadPool.GetNumberTasksInExecution() != 0)
         {}
     }
 
     //
     // Close the server socket after stopping execution.
+    // If clean termination was not specified, it is possible that the TCP socket is
+    // closed before sending responses back to requests that had already been acknowledged.
     //
-    close(m_ServerHandle);
+    close(m_ServerSocketHandle);
 }
 
 void
-DataTransmissionServer::DefaultEndpoint(
+DataTransmissionServer::DispatcherProxy(
+    std::function<StatusCode(std::string)> p_Endpoint,
     const FileDescriptor p_Connection,
     std::string p_Packet)
 {
-    // This should be a proxy that should execute the speicified function (endpoint),
-    // and once it returns it closes the connection.
+    //
+    // Execute endpoint in an async context and standardize its result.
+    //
+    StatusCode status = htonl(p_Endpoint(p_Packet));
 
-
-    std::cout << "Message from client: " << p_Packet.c_str() << std::endl;
-    
-    std::thread::id this_id = std::this_thread::get_id();
-    std::cout << "Thread function running on thread ID: " << this_id << std::endl;
-
-    // Send response to the client
-    const char *hello = "Hello from server";
-    send(p_Connection, hello, strlen(hello), 0);
-    std::cout << "Hello message sent" << std::endl;
-
+    //
+    // Send the response back to the client and close the connection.
+    // This expects that the server socket handle is still open and active.
+    //
+    send(p_Connection, &status, sizeof(status), 0);
     close(p_Connection);
 }
 

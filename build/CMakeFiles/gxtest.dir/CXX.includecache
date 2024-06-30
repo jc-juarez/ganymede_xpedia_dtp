@@ -31,9 +31,13 @@ atomic
 -
 cstdint
 -
+functional
+-
 gXStatus.hh
 /home/jcjuarez/GanymedeXpediaDataTransmissionProtocol/src/gXStatus.hh
 netinet/in.h
+-
+unordered_map
 -
 gXThreadPool.hh
 /home/jcjuarez/GanymedeXpediaDataTransmissionProtocol/src/gXThreadPool.hh
