@@ -1,0 +1,3 @@
+/home/jcjuarez/GanymedeXpediaDataTransmissionProtocol/build/CMakeFiles/rebuild_cache.dir
+/home/jcjuarez/GanymedeXpediaDataTransmissionProtocol/build/CMakeFiles/edit_cache.dir
+/home/jcjuarez/GanymedeXpediaDataTransmissionProtocol/build/CMakeFiles/gxtest.dir

@@ -1,0 +1,1 @@
+/usr/bin/c++    -rdynamic CMakeFiles/gxtest.dir/src/main.cc.o CMakeFiles/gxtest.dir/src/gXThreadPool.cc.o CMakeFiles/gxtest.dir/src/gXDataTransmissionServer.cc.o  -o gxtest  -lpthread 
