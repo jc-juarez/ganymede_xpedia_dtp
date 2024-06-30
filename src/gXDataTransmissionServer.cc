@@ -262,22 +262,15 @@ DataTransmissionServer::DispatchRequests()
             continue;
         }
         
-        std::string str(reinterpret_cast<char*>(m_ReceiveBuffer.get()), numberBytesRead);
+        std::string packet(reinterpret_cast<char*>(m_ReceiveBuffer.get()), numberBytesRead);
 
-        auto boundFunction = std::bind(&DataTransmissionServer::DefaultEndpoint, std::placeholders::_1);
+        DtpEndpointType boundFunction = DtpEndpointType(std::bind(&DataTransmissionServer::DefaultEndpoint, std::placeholders::_1));
 
-
-        std::function<StatusCode(std::string)> func = std::function<StatusCode(std::string)>(boundFunction);
-
-
-
-
-        
         m_ThreadPool.EnqueueTask(
             &DataTransmissionServer::DispatcherProxy,
-            func,
+            boundFunction,
             connection,
-            str);
+            packet);
     }
 
     if (m_CleanTermination)
@@ -300,7 +293,7 @@ DataTransmissionServer::DispatchRequests()
 
 void
 DataTransmissionServer::DispatcherProxy(
-    std::function<StatusCode(std::string)> p_Endpoint,
+    const DtpEndpointType p_Endpoint,
     const FileDescriptor p_Connection,
     std::string p_Packet)
 {

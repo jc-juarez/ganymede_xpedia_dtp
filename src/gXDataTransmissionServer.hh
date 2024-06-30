@@ -173,7 +173,7 @@ private:
     static
     void
     DispatcherProxy(
-        const std::function<StatusCode(std::string)> p_Endpoint,
+        const DtpEndpointType p_Endpoint,
         const FileDescriptor p_Connection,
         std::string p_Packet);
 
